@@ -20,6 +20,12 @@ Une application web en un seul fichier (`index.html`), sans dépendance ni serve
 
 Autres détails : options call/put, européennes/américaines, dividende continu q, scénarios prédéfinis, interface FR/EN, thème clair/sombre, responsive mobile.
 
+## Rapport
+
+Le rapport complet du projet (35 pages) présente la théorie des deux modèles, leur calibrage, l'étude de la convergence vers Black–Scholes et les résultats numériques :
+
+📄 [**Lire le rapport (PDF)**](docs/rapport_binomial_trinomial.pdf)
+
 ## Les modèles
 
 **Binomial (Cox–Ross–Rubinstein, 1979)**
