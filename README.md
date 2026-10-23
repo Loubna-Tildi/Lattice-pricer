@@ -66,7 +66,7 @@ node src/test.js
 
 1. Créer un dépôt `lattice-pricer` et y pousser ces fichiers.
 2. *Settings → Pages → Source : Deploy from a branch*, branche `main`, dossier `/ (root)`.
-3. L'application est en ligne à `https://<ton-pseudo>.github.io/lattice-pricer/`.
+3. L'application est en ligne à `https://<ton-pseudo>.github.io/Lattice-pricer/`.
 
 ## Structure
 
