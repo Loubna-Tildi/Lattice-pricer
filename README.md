@@ -88,3 +88,4 @@ docs/             captures d'écran
 ---
 
 Réalisé par **Tildi Loubna**.
+   © 2026 Tildi Loubna. Tous droits réservés.
