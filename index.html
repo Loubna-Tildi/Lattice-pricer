@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lattice Pricer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Pricing d'options européennes et américaines par arbres binomial et trinomial, avec convergence vers Black-Scholes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&display=swap">
+<style>
+/* Layout : barre de paramètres à gauche (fixe sur desktop), tableau des trois prix en tête,
+   puis six onglets d'analyse. Bleu cobalt = binomial, ocre = trinomial, carmin = Black-Scholes. */
+:root{
+  --paper:#eef1ee; --panel:#ffffff; --panel-2:#f6f8f6; --ink:#122033; --muted:#566576; --faint:#8794a2;
+  --rule:#d5ddd7; --grid:#e3e9e4;
+  --bino:#2b54d4; --trino:#c47414; --bs:#b42d47; --ok:#1f8a5b; --warn:#b7791f;
+  --bino-soft:rgba(43,84,212,.12); --trino-soft:rgba(196,116,20,.14); --bs-soft:rgba(180,45,71,.12);
+  --shadow:0 1px 0 rgba(18,32,51,.04),0 8px 24px -16px rgba(18,32,51,.25);
+  --f-display:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-body:"Archivo",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-math:"Newsreader","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --r-s:6px; --r-m:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0d141d; --panel:#141e2b; --panel-2:#101924; --ink:#e4eaf1; --muted:#97a5b5; --faint:#6b7a8c;
+  --rule:#243244; --grid:#1b2735;
+  --bino:#7c9bff; --trino:#f2a541; --bs:#f06b84; --ok:#46c28c; --warn:#e3b25a;
+  --bino-soft:rgba(124,155,255,.16); --trino-soft:rgba(242,165,65,.16); --bs-soft:rgba(240,107,132,.15);
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 28px -18px rgba(0,0,0,.8); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0d141d; --panel:#141e2b; --panel-2:#101924; --ink:#e4eaf1; --muted:#97a5b5; --faint:#6b7a8c;
+  --rule:#243244; --grid:#1b2735;
+  --bino:#7c9bff; --trino:#f2a541; --bs:#f06b84; --ok:#46c28c; --warn:#e3b25a;
+  --bino-soft:rgba(124,155,255,.16); --trino-soft:rgba(242,165,65,.16); --bs-soft:rgba(240,107,132,.15);
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 10px 28px -18px rgba(0,0,0,.8); color-scheme:dark}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--f-body);font-variation-settings:"wdth" 100;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:28px 28px;background-attachment:fixed}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--panel)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--bino);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums lining-nums}
+.math{font-family:var(--f-math);font-style:italic}
+
+/* ---------- En-tête ---------- */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--panel);border-bottom:1px solid var(--rule)}
+.top-in{max-width:1360px;margin:0 auto;display:flex;align-items:center;gap:16px;
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand svg{flex:none}
+.brand h1{margin:0;font:800 20px/1 var(--f-display);font-variation-settings:"wdth" 118;letter-spacing:-.01em;white-space:nowrap}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-tools{margin-left:auto;display:flex;gap:8px;align-items:center}
+.pill-btn{border:1px solid var(--rule);background:var(--panel-2);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;cursor:pointer}
+.pill-btn:hover{border-color:var(--faint)}
+.pill-btn[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+
+/* ---------- Grille principale ---------- */
+.wrap{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start;
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+@media (max-width:980px){.wrap{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- Panneau de paramètres ---------- */
+.ctl{position:sticky;top:calc(env(safe-area-inset-top,0px) + 74px);background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-m);
+  padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 96px);overflow:auto}
+@media (max-width:980px){.ctl{position:static;max-height:none}}
+.ctl h2{margin:0;font:700 13px/1.2 var(--f-display);font-variation-settings:"wdth" 110;color:var(--muted);letter-spacing:.02em}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:var(--panel-2)}
+.seg button{border:0;background:none;padding:7px 6px;font-size:13.5px;font-weight:600;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.field{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}
+.field label{font-size:13px;color:var(--muted)}
+.field label b{color:var(--ink);font-weight:600}
+.field input[type=number]{width:84px;text-align:right;border:1px solid var(--rule);border-radius:6px;padding:3px 7px;background:var(--panel-2);font-variant-numeric:tabular-nums}
+.field input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--ink);margin:0}
+.field .hint{grid-column:1/-1;font-size:11.5px;color:var(--faint);margin-top:-2px}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{border:1px dashed var(--rule);background:none;border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--muted)}
+.presets button:hover{border-style:solid;color:var(--ink)}
+.calib{font-size:12px;color:var(--muted);background:var(--panel-2);border-radius:8px;padding:10px;display:grid;grid-template-columns:auto 1fr 1fr;gap:3px 10px}
+.calib span:nth-child(3n+1){color:var(--faint)}
+.calib .h{font-weight:700;color:var(--ink)}
+
+/* ---------- Tableau des prix ---------- */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.board{grid-template-columns:minmax(0,1fr)}}
+.quote{position:relative;background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-m);padding:14px 16px 12px;box-shadow:var(--shadow);overflow:hidden;min-width:0}
+.quote::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c)}
+.quote .lbl{display:flex;align-items:baseline;gap:8px;font:700 14px/1.2 var(--f-display);font-variation-settings:"wdth" 112}
+.quote .lbl small{font:500 12px var(--f-body);color:var(--muted)}
+.quote .px{font:700 clamp(30px,3.4vw,42px)/1.05 var(--f-display);font-variation-settings:"wdth" 100;letter-spacing:-.02em;margin:8px 0 2px;font-variant-numeric:tabular-nums lining-nums;color:var(--ink)}
+.quote .meta{font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.quote .err{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--c-soft);color:var(--c)}
+.quote svg.spark{position:absolute;right:14px;top:46px;width:34%;height:44px;opacity:.9}
+@media (max-width:1180px) and (min-width:721px){.quote svg.spark{display:none}}
+.refline{margin-top:10px;font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 18px}
+.refline b{color:var(--ink);font-weight:600}
+
+/* ---------- Onglets ---------- */
+.tabs{display:flex;gap:2px;margin-top:22px;border-bottom:1px solid var(--rule);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;border:0;background:none;padding:10px 14px;font:600 14px var(--f-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.panel{background:var(--panel);border:1px solid var(--rule);border-top:0;border-radius:0 0 var(--r-m) var(--r-m);padding:18px;box-shadow:var(--shadow)}
+.panel h3{margin:0 0 4px;font:700 19px/1.25 var(--f-display);font-variation-settings:"wdth" 108;text-wrap:balance}
+.panel .lede{margin:0 0 14px;color:var(--muted);max-width:72ch}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.chartbox{min-width:0}
+.chartbox h4{margin:0 0 6px;font-size:13.5px;font-weight:700}
+.chartbox .cap{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.chart{width:100%;height:auto;display:block;overflow:visible}
+.chart text{fill:var(--muted);font:11px var(--f-body);font-variant-numeric:tabular-nums}
+.chart .axis{stroke:var(--rule)}
+.chart .gl{stroke:var(--grid)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--panel);border-radius:8px;padding:7px 13px;font-weight:600;font-size:13.5px;cursor:pointer}
+.btn.ghost{background:none;color:var(--ink);border-color:var(--rule)}
+.btn:disabled{opacity:.5;cursor:default}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px;background:var(--c)}
+.legend i.dash{background:repeating-linear-gradient(90deg,var(--c) 0 4px,transparent 4px 7px)}
+.stat{display:inline-flex;gap:6px;align-items:baseline;font-size:13px;color:var(--muted)}
+.stat b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ---------- Arbres ---------- */
+.trees{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.trees{grid-template-columns:minmax(0,1fr)}}
+.treebox{background:var(--panel-2);border:1px solid var(--rule);border-radius:var(--r-m);padding:12px;min-width:0}
+.treebox h4{margin:0;font-size:14px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.treebox h4 span{font-weight:500;color:var(--muted);font-size:12px}
+.lat{width:100%;height:auto;display:block}
+.lat .edge{stroke:var(--rule);stroke-width:1.2}
+.lat .edge.on{stroke:var(--c);stroke-opacity:.55}
+.lat .nd circle{fill:var(--panel);stroke:var(--c);stroke-width:1.5;transition:fill .25s}
+.lat .nd text{fill:var(--ink);font:600 10px var(--f-body);font-variant-numeric:tabular-nums;text-anchor:middle;pointer-events:none}
+.lat .nd text.s{fill:var(--faint);font-weight:500;font-size:9px}
+.lat .nd.hide text.v{opacity:0}
+.lat .nd.ex circle{stroke:var(--bs);stroke-width:2.5}
+.lat .nd:hover circle{stroke-width:3}
+#tip{position:fixed;z-index:40;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12px;line-height:1.45;padding:8px 10px;border-radius:8px;max-width:260px;box-shadow:var(--shadow)}
+#tip b{font-weight:700}
+
+/* ---------- Grecques ---------- */
+.tbl-wrap{overflow-x:auto}
+table.g{border-collapse:collapse;width:100%;min-width:480px;font-variant-numeric:tabular-nums}
+table.g th,table.g td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--rule);font-size:14px}
+table.g th:first-child,table.g td:first-child{text-align:left}
+table.g thead th{font-size:12.5px;color:var(--muted);font-weight:600}
+table.g td.sym{font-family:var(--f-math);font-style:italic;font-size:17px}
+table.g td small{display:block;color:var(--faint);font-size:11.5px;font-family:var(--f-body);font-style:normal}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:6px}
+
+/* ---------- Marché incomplet ---------- */
+.inc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px}
+@media (max-width:860px){.inc{grid-template-columns:minmax(0,1fr)}}
+.eq{font-family:var(--f-math);font-size:18px;line-height:1.7;background:var(--panel-2);border-radius:8px;padding:10px 14px}
+.eq i{font-style:italic}
+.probs{display:grid;gap:8px;margin-top:12px}
+.prob{display:grid;grid-template-columns:44px 1fr 56px;gap:10px;align-items:center;font-size:13px}
+.prob .bar{height:10px;border-radius:5px;background:var(--grid);overflow:hidden}
+.prob .bar span{display:block;height:100%;background:var(--trino);transition:width .2s}
+.bigC{font:700 34px/1 var(--f-display);font-variant-numeric:tabular-nums;margin:6px 0}
+.note{font-size:13px;color:var(--muted);border-left:3px solid var(--rule);padding:4px 0 4px 10px;margin:12px 0 0}
+
+/* ---------- Pied de page ---------- */
+footer{max-width:1360px;margin:0 auto;color:var(--muted);font-size:12.5px;display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between;
+  padding-block:0 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+footer a{color:var(--ink)}
+.refs{max-width:72ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <g fill="none" stroke-width="1.6" stroke-linecap="round">
+          <path d="M5 17 L16 9 L28 4 M5 17 L16 25 L28 30 M16 9 L28 17 M16 25 L28 17" stroke="var(--bino)"/>
+          <path d="M16 9 L28 9 M16 25 L28 25 M5 17 L16 17 L28 17" stroke="var(--trino)" stroke-dasharray="2 2.5"/>
+        </g>
+        <g fill="var(--ink)"><circle cx="5" cy="17" r="2.4"/><circle cx="16" cy="9" r="2"/><circle cx="16" cy="17" r="2"/><circle cx="16" cy="25" r="2"/></g>
+      </svg>
+      <div style="min-width:0">
+        <h1>Lattice Pricer</h1>
+        <p data-i18n="tagline">Options européennes et américaines : binomial, trinomial et Black–Scholes</p>
+      </div>
+    </div>
+    <div class="top-tools">
+      <button class="pill-btn" id="langBtn" type="button" aria-label="Language">EN</button>
+      <button class="pill-btn" id="themeBtn" type="button" aria-label="Thème" style="display:inline-flex;align-items:center;padding:5px 9px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- ===================== Paramètres ===================== -->
+  <aside class="ctl" aria-label="Paramètres">
+    <div style="display:grid;gap:8px">
+      <h2 data-i18n="contract">Contrat</h2>
+      <div class="seg" role="group" aria-label="Type"><button type="button" id="bCall" aria-pressed="true">Call</button><button type="button" id="bPut" aria-pressed="false">Put</button></div>
+      <div class="seg" role="group" aria-label="Style"><button type="button" id="bEu" aria-pressed="true" data-i18n="eu">Européenne</button><button type="button" id="bAm" aria-pressed="false" data-i18n="am">Américaine</button></div>
+    </div>
+    <div style="display:grid;gap:10px" id="fields"></div>
+    <div style="display:grid;gap:8px">
+      <h2 data-i18n="presets">Scénarios</h2>
+      <div class="presets" id="presets"></div>
+    </div>
+    <div class="calib num" id="calib"></div>
+  </aside>
+
+  <!-- ===================== Contenu ===================== -->
+  <main style="min-width:0">
+    <section class="board" aria-label="Prix">
+      <article class="quote" style="--c:var(--bino);--c-soft:var(--bino-soft)">
+        <div class="lbl" data-i18n="bino">Binomial <small>CRR</small></div>
+        <svg class="spark" id="spB" viewBox="0 0 120 42" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="px" id="pxB">–</div>
+        <div class="meta" id="mtB"></div>
+        <div class="err" id="erB"></div>
+      </article>
+      <article class="quote" style="--c:var(--trino);--c-soft:var(--trino-soft)">
+        <div class="lbl" data-i18n="trino">Trinomial <small>λ-calibré</small></div>
+        <svg class="spark" id="spT" viewBox="0 0 120 42" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div class="px" id="pxT">–</div>
+        <div class="meta" id="mtT"></div>
+        <div class="err" id="erT"></div>
+      </article>
+      <article class="quote" style="--c:var(--bs);--c-soft:var(--bs-soft)">
+        <div class="lbl"><span id="bsTitle">Black–Scholes</span> <small id="bsSub">formule fermée</small></div>
+        <div class="px" id="pxS">–</div>
+        <div class="meta" id="mtS"></div>
+        <div class="err" id="erS"></div>
+      </article>
+    </section>
+    <div class="refline" id="refline"></div>
+
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+    <section class="panel" id="panel"></section>
+  </main>
+</div>
+
+<footer>
+  <div class="refs" data-i18n="refs">Références : Cox, Ross &amp; Rubinstein (1979) ; Boyle (1986) ; Kamrad &amp; Ritchken (1991) ; Black &amp; Scholes (1973) ; Merton (1973) ; Hull, <i>Options, Futures, and Other Derivatives</i>.</div>
+  <div><span data-i18n="by">Réalisé par</span> <b>Tildi Loubna</b></div>
+</footer>
+<div id="tip" hidden></div>
+
+<script>
+/* ===================================================================
+   Lattice Pricer — moteur de calcul
+   Binomial (Cox-Ross-Rubinstein), trinomial (Boyle / Kamrad-Ritchken)
+   et Black-Scholes-Merton, options européennes et américaines,
+   avec rendement de dividende continu q.
+   =================================================================== */
+const Engine = (() => {
+  // Fonction de répartition normale, précision ~1e-15 (algorithme de West, 2005)
+  function ncdf(x) {
+    const a = Math.abs(x);
+    let c;
+    if (a > 37) c = 0;
+    else {
+      const e = Math.exp(-a * a / 2);
+      if (a < 7.07106781186547) {
+        let b = 3.52624965998911e-02 * a + 0.700383064443688;
+        b = b * a + 6.37396220353165; b = b * a + 33.912866078383;
+        b = b * a + 112.079291497871; b = b * a + 221.213596169931;
+        b = b * a + 220.206867912376;
+        c = e * b;
+        b = 8.83883476483184e-02 * a + 1.75566716318264;
+        b = b * a + 16.064177579207; b = b * a + 86.7807322029461;
+        b = b * a + 296.564248779674; b = b * a + 637.333633378831;
+        b = b * a + 793.826512519948; b = b * a + 440.413735824752;
+        c = c / b;
+      } else {
+        let b = a + 0.65; b = a + 4 / b; b = a + 3 / b; b = a + 2 / b; b = a + 1 / b;
+        c = e / b / 2.506628274631;
+      }
+    }
+    return x > 0 ? 1 - c : c;
+  }
+  const npdf = x => Math.exp(-x * x / 2) / 2.5066282746310002;
+
+  /* ---------- Black-Scholes-Merton (européenne) ---------- */
+  function bs(p) {
+    const { S, K, T, r, q, sigma, call } = p;
+    const sT = sigma * Math.sqrt(T);
+    const d1 = (Math.log(S / K) + (r - q + sigma * sigma / 2) * T) / sT, d2 = d1 - sT;
+    const dq = Math.exp(-q * T), dr = Math.exp(-r * T);
+    const price = call ? S * dq * ncdf(d1) - K * dr * ncdf(d2)
+                       : K * dr * ncdf(-d2) - S * dq * ncdf(-d1);
+    const delta = call ? dq * ncdf(d1) : dq * (ncdf(d1) - 1);
+    const gamma = dq * npdf(d1) / (S * sT);
+    const vega = S * dq * npdf(d1) * Math.sqrt(T);
+    const theta = call
+      ? -S * dq * npdf(d1) * sigma / (2 * Math.sqrt(T)) - r * K * dr * ncdf(d2) + q * S * dq * ncdf(d1)
+      : -S * dq * npdf(d1) * sigma / (2 * Math.sqrt(T)) + r * K * dr * ncdf(-d2) - q * S * dq * ncdf(-d1);
+    const rho = call ? K * T * dr * ncdf(d2) : -K * T * dr * ncdf(-d2);
+    return { price, delta, gamma, theta, vega, rho, d1, d2 };
+  }
+
+  /* ---------- Arbre binomial CRR ---------- */
+  // opts.boundary = true : renvoie la frontière d'exercice S*(t)
+  function binomial(p, N, opts = {}) {
+    const { S, K, T, r, q, sigma, call, american } = p;
+    const dt = T / N, u = Math.exp(sigma * Math.sqrt(dt)), d = 1 / u;
+    const disc = Math.exp(-r * dt), g = Math.exp((r - q) * dt);
+    const pu = (g - d) / (u - d), pd = 1 - pu;
+    if (!(pu > 0 && pu < 1)) return { price: NaN, error: 'arbitrage' };
+    const V = new Float64Array(N + 1);
+    const pw = new Float64Array(2 * N + 1);
+    pw[N] = S; for (let m = 1; m <= N; m++) { pw[N + m] = pw[N + m - 1] * u; pw[N - m] = pw[N - m + 1] * d; }
+    const sAt = (k, j) => pw[N + 2 * j - k];
+    for (let j = 0; j <= N; j++) {
+      const s = sAt(N, j); V[j] = call ? Math.max(s - K, 0) : Math.max(K - s, 0);
+    }
+    const bnd = opts.boundary ? new Float64Array(N + 1).fill(NaN) : null;
+    let V1 = null, V2 = null;
+    for (let k = N - 1; k >= 0; k--) {
+      for (let j = 0; j <= k; j++) {
+        let v = disc * (pu * V[j + 1] + pd * V[j]);
+        if (american) {
+          const s = sAt(k, j), ex = call ? s - K : K - s;
+          if (ex > v) {
+            v = ex;
+            if (bnd) bnd[k] = call ? (isNaN(bnd[k]) ? s : Math.min(bnd[k], s)) : (isNaN(bnd[k]) ? s : Math.max(bnd[k], s));
+          }
+        }
+        V[j] = v;
+      }
+      if (k === 2) V2 = [V[0], V[1], V[2]];
+      if (k === 1) V1 = [V[0], V[1]];
+    }
+    const out = { price: V[0], u, d, pu, pm: 0, pd, disc };
+    if (V1) out.delta = (V1[1] - V1[0]) / (S * u - S * d);
+    if (V2) {
+      const Suu = S * u * u, Sdd = S * d * d;
+      out.gamma = ((V2[2] - V2[1]) / (Suu - S) - (V2[1] - V2[0]) / (S - Sdd)) / ((Suu - Sdd) / 2);
+      out.theta = (V2[1] - V[0]) / (2 * dt);
+    }
+    if (bnd) out.boundary = bnd;
+    return out;
+  }
+
+  /* ---------- Arbre trinomial (calibrage par lambda) ---------- */
+  function trinomial(p, N, lambda = Math.sqrt(1.5), opts = {}) {
+    const { S, K, T, r, q, sigma, call, american } = p;
+    const dt = T / N, u = Math.exp(lambda * sigma * Math.sqrt(dt)), d = 1 / u;
+    const disc = Math.exp(-r * dt), g = Math.exp((r - q) * dt);
+    const pm = 1 - 1 / (lambda * lambda);
+    const pu = (g - pm - (1 - pm) * d) / (u - d), pd = 1 - pm - pu;
+    if (!(pu > 0 && pd > 0 && pm >= 0)) return { price: NaN, error: 'proba' };
+    const M = 2 * N + 1, V = new Float64Array(M);
+    const pw = new Float64Array(M);
+    pw[N] = S; for (let m = 1; m <= N; m++) { pw[N + m] = pw[N + m - 1] * u; pw[N - m] = pw[N - m + 1] * d; }
+    const sAt = (k, i) => pw[N + i - k]; // i = 0..2k
+    for (let i = 0; i < M; i++) {
+      const s = sAt(N, i); V[i] = call ? Math.max(s - K, 0) : Math.max(K - s, 0);
+    }
+    const bnd = opts.boundary ? new Float64Array(N + 1).fill(NaN) : null;
+    let V1 = null;
+    for (let k = N - 1; k >= 0; k--) {
+      for (let i = 0; i <= 2 * k; i++) {
+        let v = disc * (pu * V[i + 2] + pm * V[i + 1] + pd * V[i]);
+        if (american) {
+          const s = sAt(k, i), ex = call ? s - K : K - s;
+          if (ex > v) {
+            v = ex;
+            if (bnd) bnd[k] = call ? (isNaN(bnd[k]) ? s : Math.min(bnd[k], s)) : (isNaN(bnd[k]) ? s : Math.max(bnd[k], s));
+          }
+        }
+        V[i] = v;
+      }
+      if (k === 1) V1 = [V[0], V[1], V[2]];
+    }
+    const out = { price: V[0], u, d, pu, pm, pd, disc };
+    if (V1) {
+      const Su = S * u, Sd = S * d;
+      out.delta = (V1[2] - V1[0]) / (Su - Sd);
+      out.gamma = ((V1[2] - V1[1]) / (Su - S) - (V1[1] - V1[0]) / (S - Sd)) / ((Su - Sd) / 2);
+      out.theta = (V1[1] - V[0]) / dt;
+    }
+    if (bnd) out.boundary = bnd;
+    return out;
+  }
+
+  /* ---------- Arbre complet (affichage, petit nombre de pas) ---------- */
+  function tree(model, p, n, lambda) {
+    const { S, K, T, r, q, sigma, call, american } = p;
+    const dt = T / n, disc = Math.exp(-r * dt), g = Math.exp((r - q) * dt);
+    let u, pu, pm, pd;
+    if (model === 'bino') { u = Math.exp(sigma * Math.sqrt(dt)); pm = 0; pu = (g - 1 / u) / (u - 1 / u); pd = 1 - pu; }
+    else { u = Math.exp(lambda * sigma * Math.sqrt(dt)); pm = 1 - 1 / (lambda * lambda); pu = (g - pm - (1 - pm) / u) / (u - 1 / u); pd = 1 - pm - pu; }
+    const step = model === 'bino' ? 2 : 1; // écart d'indice entre deux nœuds voisins
+    const levels = [];
+    for (let k = 0; k <= n; k++) {
+      const nodes = [];
+      const jmin = -k, jmax = k;
+      for (let j = jmin; j <= jmax; j += step) nodes.push({ j, S: S * Math.pow(u, j), V: 0, ex: false });
+      levels.push(nodes);
+    }
+    const pay = s => call ? Math.max(s - K, 0) : Math.max(K - s, 0);
+    levels[n].forEach(nd => { nd.V = pay(nd.S); });
+    for (let k = n - 1; k >= 0; k--) {
+      const nxt = new Map(levels[k + 1].map(nd => [nd.j, nd]));
+      levels[k].forEach(nd => {
+        const up = nxt.get(nd.j + (model === 'bino' ? 1 : 1));
+        const dn = nxt.get(nd.j - 1);
+        const mid = nxt.get(nd.j);
+        let cont = model === 'bino'
+          ? disc * (pu * up.V + pd * dn.V)
+          : disc * (pu * up.V + pm * mid.V + pd * dn.V);
+        nd.cont = cont;
+        const ex = pay(nd.S);
+        if (american && ex > cont + 1e-12) { nd.V = ex; nd.ex = true; } else nd.V = cont;
+        nd.delta = (up.V - dn.V) / (up.S - dn.S);
+      });
+    }
+    return { levels, u, pu, pm, pd };
+  }
+
+  return { ncdf, npdf, bs, binomial, trinomial, tree };
+})();
+
+
+</script>
+<script>
+(() => {
+'use strict';
+const E = Engine;
+const $ = id => document.getElementById(id);
+
+/* ==================== Langue ==================== */
+const T = {
+  fr: {
+    tagline:'Options européennes et américaines : binomial, trinomial et Black–Scholes',
+    contract:'Contrat', eu:'Européenne', am:'Américaine', presets:'Scénarios',
+    bino:'Binomial <small>CRR</small>', trino:'Trinomial <small>λ-calibré</small>',
+    by:'Réalisé par',
+    refs:'Références : Cox, Ross &amp; Rubinstein (1979) ; Boyle (1986) ; Kamrad &amp; Ritchken (1991) ; Black &amp; Scholes (1973) ; Merton (1973) ; Hull, <i>Options, Futures, and Other Derivatives</i>.',
+    S:'Spot <b class="math">S₀</b>', K:'Strike <b class="math">K</b>', Tm:'Maturité <b class="math">T</b> (ans)', r:'Taux sans risque <b class="math">r</b> (%)',
+    q:'Dividende <b class="math">q</b> (%)', sig:'Volatilité <b class="math">σ</b> (%)', N:'Pas de l’arbre <b class="math">N</b>', lam:'Écartement trinomial <b class="math">λ</b>',
+    lamHint:'λ = 1 redonne exactement le binomial', NHint:'Coût en O(N²)',
+    pr_ref:'Cas de référence', pr_put:'Put américain', pr_div:'Call + dividende', pr_vol:'Forte volatilité', pr_short:'Maturité courte',
+    calibH:['','Binomial','Trinomial'], cu:'u', cpu:'p<sub>u</sub>', cpm:'p<sub>m</sub>', cpd:'p<sub>d</sub>',
+    steps:'pas', ms:'ms', vsBS:'vs Black–Scholes', vsRef:'vs référence', exact:'référence exacte',
+    bsEU:'Black–Scholes', bsClosed:'formule fermée', bsEuOnly:'européenne équivalente',
+    premium:'prime d’exercice anticipé', refEU:'Référence : <b>Black–Scholes exact</b>',
+    refAM:'Référence américaine : <b>trinomial N = 2 000</b> = ', noBS:'Pas de formule fermée pour l’américaine',
+    tabs:['Convergence','Arbres','Grecques','Exercice anticipé','Marché incomplet','λ et performance'],
+    conv_h:'Les deux arbres convergent vers le prix limite', conv_l:'Le binomial oscille d’un pas à l’autre (effet pair/impair), le trinomial converge régulièrement. L’erreur décroît en 1/N dans les deux cas.',
+    replay:'Rejouer la convergence', priceVsN:'Prix en fonction du nombre de pas', errVsN:'Erreur absolue (échelle log–log)',
+    slope:'pente estimée', limit:'limite', nAxis:'Nombre de pas N', price:'Prix', err:'|erreur|',
+    tree_h:'La récurrence rétrograde, nœud par nœud', tree_l:'À l’échéance, l’option vaut son payoff. On remonte ensuite l’arbre : chaque nœud est la moyenne actualisée de ses successeurs sous la probabilité risque-neutre. En américaine, on garde le maximum entre attendre et exercer.',
+    animate:'Animer la récurrence', reset:'Tout afficher', shown:'Pas affichés',
+    exNode:'exercice anticipé optimal', hover:'Survole un nœud pour voir le détail.',
+    tipS:'Sous-jacent', tipV:'Valeur', tipC:'Continuation', tipX:'Exercice immédiat', tipD:'Delta de couverture', tipStep:'Pas',
+    greeks_h:'Les arbres retrouvent les sensibilités de Black–Scholes', greeks_l:'Delta, gamma et thêta sont lus directement sur les premiers nœuds de l’arbre ; vega et rho par différences finies centrées.',
+    gr:['Delta','Gamma','Thêta','Vega','Rho'], grd:['∂V/∂S','∂²V/∂S²','∂V/∂t, par an','∂V/∂σ, pour 1 point','∂V/∂r, pour 1 point'],
+    model:'Sensibilité', profile:'Prix en fonction du spot', payoff:'Payoff immédiat',
+    grNoteAm:'En américaine, la colonne Black–Scholes donne les sensibilités de l’européenne équivalente.',
+    ex_h:'Frontière d’exercice optimal', ex_l:'Pour une option américaine, il existe un prix critique S*(t) : on exerce dès que le sous-jacent le franchit. Les deux arbres estiment la même frontière.',
+    exNone:'Aucun exercice anticipé : un call américain sans dividende ne s’exerce jamais avant l’échéance (Merton, 1973). Choisis un put, ou ajoute un dividende, pour faire apparaître une frontière.',
+    exEu:'L’option est européenne : passe en « Américaine » pour afficher la frontière d’exercice.',
+    tAxis:'Temps t (années)', crit:'Prix critique S*(t)', strike:'Strike K', exRegion:'zone d’exercice',
+    premiumLbl:'Prime d’exercice anticipé', amVal:'Valeur américaine', euVal:'Valeur européenne',
+    inc_h:'Trois états, deux actifs : le marché devient incomplet', inc_l:'Sur une période, avec u = 1,1, m = 1, d = 0,9 et R = 1,05, les probabilités risque-neutres vérifient deux équations pour trois inconnues. Elles forment une famille à un paramètre t, et le prix d’un call K = 100 n’est plus unique.',
+    incSys:'Conditions de non-arbitrage', incFam:'Famille de solutions', incT:'Paramètre t', incPrice:'Prix sans arbitrage du call',
+    incBino:'prix binomial', incRange:'intervalle sans arbitrage',
+    incNote:'Toute valeur de l’intervalle est compatible avec l’absence d’arbitrage. La borne haute, 7,14, est exactement le prix binomial. Le calibrage par λ choisit un point de cet intervalle en imposant la volatilité.',
+    perf_h:'Le paramètre λ et le coût de calcul', perf_l:'Le trinomial coûte environ deux fois plus par pas. La bonne comparaison se fait donc à temps de calcul égal.',
+    lamChart:'Erreur moyenne selon λ (call européen, K ∈ {0,9 ; 1 ; 1,1}·S₀, N de 100 à 200)', timeChart:'Erreur moyenne selon le temps de calcul (call européen, 9 strikes)',
+    compute:'Calculer', computing:'Calcul…', lamAxis:'λ', timeAxis:'Temps par prix (ms)', meanErr:'Erreur moyenne',
+    perfNote:'Mesures faites dans ton navigateur : les temps dépendent de la machine.', perfEu:'Ces deux mesures utilisent des options européennes (référence exacte Black–Scholes), quels que soient les paramètres choisis.',
+    arb:'Paramètres incohérents : la probabilité risque-neutre sort de [0, 1]. Augmente N ou σ.'
+  },
+  en: {
+    tagline:'European and American options: binomial, trinomial and Black–Scholes',
+    contract:'Contract', eu:'European', am:'American', presets:'Scenarios',
+    bino:'Binomial <small>CRR</small>', trino:'Trinomial <small>λ-calibrated</small>',
+    by:'Built by',
+    refs:'References: Cox, Ross &amp; Rubinstein (1979); Boyle (1986); Kamrad &amp; Ritchken (1991); Black &amp; Scholes (1973); Merton (1973); Hull, <i>Options, Futures, and Other Derivatives</i>.',
+    S:'Spot <b class="math">S₀</b>', K:'Strike <b class="math">K</b>', Tm:'Maturity <b class="math">T</b> (years)', r:'Risk-free rate <b class="math">r</b> (%)',
+    q:'Dividend yield <b class="math">q</b> (%)', sig:'Volatility <b class="math">σ</b> (%)', N:'Tree steps <b class="math">N</b>', lam:'Trinomial spacing <b class="math">λ</b>',
+    lamHint:'λ = 1 gives back the binomial tree exactly', NHint:'Cost grows as O(N²)',
+    pr_ref:'Reference case', pr_put:'American put', pr_div:'Call + dividend', pr_vol:'High volatility', pr_short:'Short maturity',
+    calibH:['','Binomial','Trinomial'], cu:'u', cpu:'p<sub>u</sub>', cpm:'p<sub>m</sub>', cpd:'p<sub>d</sub>',
+    steps:'steps', ms:'ms', vsBS:'vs Black–Scholes', vsRef:'vs reference', exact:'exact reference',
+    bsEU:'Black–Scholes', bsClosed:'closed form', bsEuOnly:'equivalent European',
+    premium:'early-exercise premium', refEU:'Reference: <b>exact Black–Scholes</b>',
+    refAM:'American reference: <b>trinomial N = 2,000</b> = ', noBS:'No closed form for the American option',
+    tabs:['Convergence','Trees','Greeks','Early exercise','Incomplete market','λ and performance'],
+    conv_h:'Both trees converge to the limit price', conv_l:'The binomial tree oscillates from one step to the next (odd/even effect); the trinomial tree converges smoothly. In both cases the error decays as 1/N.',
+    replay:'Replay convergence', priceVsN:'Price against number of steps', errVsN:'Absolute error (log–log scale)',
+    slope:'fitted slope', limit:'limit', nAxis:'Number of steps N', price:'Price', err:'|error|',
+    tree_h:'Backward induction, node by node', tree_l:'At maturity the option is worth its payoff. We then roll back: each node is the discounted average of its successors under the risk-neutral probability. For an American option we keep the larger of waiting and exercising.',
+    animate:'Animate backward induction', reset:'Show all', shown:'Steps shown',
+    exNode:'optimal early exercise', hover:'Hover a node to see the details.',
+    tipS:'Underlying', tipV:'Value', tipC:'Continuation', tipX:'Immediate exercise', tipD:'Hedge delta', tipStep:'Step',
+    greeks_h:'The trees recover the Black–Scholes sensitivities', greeks_l:'Delta, gamma and theta are read directly from the first nodes of the tree; vega and rho use central finite differences.',
+    gr:['Delta','Gamma','Theta','Vega','Rho'], grd:['∂V/∂S','∂²V/∂S²','∂V/∂t, per year','∂V/∂σ, per 1 point','∂V/∂r, per 1 point'],
+    model:'Sensitivity', profile:'Price against spot', payoff:'Immediate payoff',
+    grNoteAm:'For American options, the Black–Scholes column shows the equivalent European sensitivities.',
+    ex_h:'Optimal exercise boundary', ex_l:'An American option has a critical price S*(t): exercise as soon as the underlying crosses it. Both trees estimate the same boundary.',
+    exNone:'No early exercise: an American call without dividends is never exercised before maturity (Merton, 1973). Pick a put, or add a dividend, to see a boundary.',
+    exEu:'The option is European: switch to “American” to show the exercise boundary.',
+    tAxis:'Time t (years)', crit:'Critical price S*(t)', strike:'Strike K', exRegion:'exercise region',
+    premiumLbl:'Early-exercise premium', amVal:'American value', euVal:'European value',
+    inc_h:'Three states, two assets: the market becomes incomplete', inc_l:'Over one period, with u = 1.1, m = 1, d = 0.9 and R = 1.05, the risk-neutral probabilities satisfy two equations in three unknowns. They form a one-parameter family t, and the price of a K = 100 call is no longer unique.',
+    incSys:'No-arbitrage conditions', incFam:'Family of solutions', incT:'Parameter t', incPrice:'No-arbitrage call price',
+    incBino:'binomial price', incRange:'no-arbitrage interval',
+    incNote:'Any value in the interval is consistent with no arbitrage. The upper bound, 7.14, is exactly the binomial price. Calibrating with λ picks one point of this interval by matching the volatility.',
+    perf_h:'The λ parameter and computing cost', perf_l:'A trinomial step costs about twice as much, so the fair comparison is at equal computing time.',
+    lamChart:'Mean error against λ (European call, K ∈ {0.9, 1, 1.1}·S₀, N from 100 to 200)', timeChart:'Mean error against computing time (European call, 9 strikes)',
+    compute:'Compute', computing:'Computing…', lamAxis:'λ', timeAxis:'Time per price (ms)', meanErr:'Mean error',
+    perfNote:'Measured in your browser: timings depend on the machine.', perfEu:'Both measurements use European options (exact Black–Scholes reference), whatever the selected parameters.',
+    arb:'Inconsistent parameters: the risk-neutral probability leaves [0, 1]. Increase N or σ.'
+  }
+};
+let lang = 'fr';
+try { lang = localStorage.getItem('lp-lang') || 'fr'; } catch (e) {}
+const t = k => T[lang][k];
+const fmt = (x, d = 4) => {
+  if (!Number.isFinite(x)) return '–';
+  return x.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+const fmtE = x => {
+  if (!Number.isFinite(x)) return '–';
+  if (x === 0) return '0';
+  const e = Math.floor(Math.log10(Math.abs(x))), m = x / Math.pow(10, e);
+  return (lang === 'fr' ? m.toFixed(1).replace('.', ',') : m.toFixed(1)) + 'e' + e;
+};
+
+/* ==================== État ==================== */
+const P = { S:100, K:100, T:1, r:5, q:0, sig:20, N:200, lam:1.2247, call:true, american:false };
+const FIELDS = [
+  { k:'S', min:20, max:300, step:1, d:0 }, { k:'K', min:20, max:300, step:1, d:0 },
+  { k:'Tm', p:'T', min:0.05, max:5, step:0.05, d:2 }, { k:'r', min:-2, max:15, step:0.25, d:2 },
+  { k:'q', min:0, max:12, step:0.25, d:2 }, { k:'sig', min:5, max:100, step:1, d:0 },
+  { k:'N', min:10, max:2000, step:10, d:0, hint:'NHint' }, { k:'lam', min:1, max:2.5, step:0.0001, d:4, hint:'lamHint' }
+];
+const PRESETS = [
+  ['pr_ref', { S:100, K:100, T:1, r:5, q:0, sig:20, N:200, lam:1.2247, call:true, american:false }],
+  ['pr_put', { S:100, K:100, T:1, r:5, q:0, sig:20, N:200, lam:1.2247, call:false, american:true }],
+  ['pr_div', { S:100, K:100, T:1, r:5, q:6, sig:20, N:200, lam:1.2247, call:true, american:true }],
+  ['pr_vol', { S:100, K:110, T:1, r:3, q:0, sig:60, N:300, lam:1.2247, call:true, american:false }],
+  ['pr_short', { S:100, K:95, T:0.1, r:5, q:0, sig:25, N:200, lam:1.2247, call:false, american:true }]
+];
+const params = (o = {}) => Object.assign({ S:P.S, K:P.K, T:P.T, r:P.r/100, q:P.q/100, sigma:P.sig/100, call:P.call, american:P.american }, o);
+
+/* ==================== Panneau de paramètres ==================== */
+function buildFields() {
+  $('fields').innerHTML = FIELDS.map(f => {
+    const key = f.p || f.k;
+    return `<div class="field"><label for="n_${key}">${t(f.k)}</label>
+      <input type="number" id="n_${key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[key]}">
+      <input type="range" id="r_${key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${P[key]}" aria-label="${key}">
+      ${f.hint ? `<div class="hint">${t(f.hint)}</div>` : ''}</div>`;
+  }).join('');
+  FIELDS.forEach(f => {
+    const key = f.p || f.k, n = $('n_' + key), r = $('r_' + key);
+    const set = v => { v = Math.min(f.max, Math.max(f.min, +v)); if (!Number.isFinite(v)) return; P[key] = v; n.value = +v.toFixed(f.d); r.value = v; schedule(); };
+    r.addEventListener('input', () => set(r.value));
+    n.addEventListener('change', () => set(n.value));
+  });
+  $('presets').innerHTML = PRESETS.map((p, i) => `<button type="button" data-p="${i}">${t(p[0])}</button>`).join('');
+  $('presets').querySelectorAll('button').forEach(b => b.onclick = () => { Object.assign(P, PRESETS[+b.dataset.p][1]); syncInputs(); schedule(true); });
+}
+function syncInputs() {
+  FIELDS.forEach(f => { const key = f.p || f.k; $('n_' + key).value = +(+P[key]).toFixed(f.d); $('r_' + key).value = P[key]; });
+  $('bCall').setAttribute('aria-pressed', P.call); $('bPut').setAttribute('aria-pressed', !P.call);
+  $('bEu').setAttribute('aria-pressed', !P.american); $('bAm').setAttribute('aria-pressed', P.american);
+}
+$('bCall').onclick = () => { P.call = true; syncInputs(); schedule(); };
+$('bPut').onclick = () => { P.call = false; syncInputs(); schedule(); };
+$('bEu').onclick = () => { P.american = false; syncInputs(); schedule(); };
+$('bAm').onclick = () => { P.american = true; syncInputs(); schedule(); };
+
+/* ==================== Graphiques SVG ==================== */
+const NS = 'http://www.w3.org/2000/svg';
+function niceTicks(a, b, n = 5) {
+  if (a === b) { a -= 1; b += 1; }
+  const span = b - a, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const err = step0 / mag, step = (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1) * mag;
+  const out = []; for (let v = Math.ceil(a / step) * step; v <= b + step * 1e-9; v += step) out.push(+v.toPrecision(12));
+  return { ticks: out, step };
+}
+function decFmt(v, step) {
+  const d = Math.max(0, Math.min(6, -Math.floor(Math.log10(step) + 1e-9)));
+  return fmt(v, d);
+}
+/* cfg: {series:[{name,color,pts:[[x,y]],dash,width,area}], xlog, ylog, xlabel, ylabel, hlines:[{y,color,label,dash}], band:{y0,y1,color}, hover:true, ypad, xfmt, yfmt, height, reveal} */
+function chart(svg, cfg) {
+  const W = Math.max(320, svg.parentElement.clientWidth || 600), H = cfg.height || Math.round(Math.min(340, Math.max(230, W * 0.55)));
+  const m = { l: 66, r: 18, t: 14, b: 40 };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const allPts = cfg.series.flatMap(s => s.pts).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]) && (!cfg.ylog || p[1] > 0) && (!cfg.xlog || p[0] > 0));
+  if (!allPts.length) { svg.innerHTML = ''; return; }
+  const tx = v => cfg.xlog ? Math.log10(v) : v, ty = v => cfg.ylog ? Math.log10(v) : v;
+  let x0 = Math.min(...allPts.map(p => tx(p[0]))), x1 = Math.max(...allPts.map(p => tx(p[0])));
+  let ys = allPts.map(p => ty(p[1])).concat((cfg.hlines || []).map(h => ty(h.y)));
+  if (cfg.yinclude) ys = ys.concat(cfg.yinclude.map(ty));
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (cfg.yclip) { y0 = Math.max(y0, ty(cfg.yclip[0])); y1 = Math.min(y1, ty(cfg.yclip[1])); }
+  const pad = (y1 - y0) * (cfg.ypad ?? 0.08) || 1; y0 -= pad; y1 += pad;
+  if (cfg.xlog) { x0 = Math.floor(x0 * 10) / 10; x1 = Math.ceil(x1 * 10) / 10; }
+  const X = v => m.l + (tx(v) - x0) / (x1 - x0 || 1) * (W - m.l - m.r);
+  const Y = v => H - m.b - (ty(v) - y0) / (y1 - y0 || 1) * (H - m.t - m.b);
+  let h = '';
+  // grille et axes
+  const yt = cfg.ylog ? (() => { const o = []; for (let e = Math.ceil(y0); e <= Math.floor(y1); e++) o.push(Math.pow(10, e)); return { ticks: o }; })() : niceTicks(y0, y1, 5);
+  yt.ticks.forEach(v => { const y = Y(v); h += `<line class="gl" x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}"/><text x="${m.l - 8}" y="${y + 4}" text-anchor="end">${cfg.ylog ? fmtE(v) : (cfg.yfmt ? cfg.yfmt(v) : decFmt(v, yt.step))}</text>`; });
+  const xt = cfg.xlog ? (() => { const o = []; for (let e = Math.ceil(x0); e <= Math.floor(x1); e++) o.push(Math.pow(10, e)); return { ticks: o }; })() : niceTicks(x0, x1, Math.max(3, Math.round(W / 110)));
+  xt.ticks.forEach(v => { const x = X(v); h += `<line class="gl" x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}"/><text x="${x}" y="${H - m.b + 16}" text-anchor="middle">${cfg.xfmt ? cfg.xfmt(v) : (cfg.xlog ? fmt(v, 0) : decFmt(v, xt.step))}</text>`; });
+  h += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${H - m.b}"/>`;
+  if (cfg.xlabel) h += `<text x="${(m.l + W - m.r) / 2}" y="${H - 6}" text-anchor="middle">${cfg.xlabel}</text>`;
+  if (cfg.ylabel) h += `<text transform="translate(12 ${(m.t + H - m.b) / 2}) rotate(-90)" text-anchor="middle">${cfg.ylabel}</text>`;
+  h += `<defs><clipPath id="cp-${svg.id}"><rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}"/></clipPath></defs><g clip-path="url(#cp-${svg.id})">`;
+  if (cfg.band) h += `<rect x="${m.l}" width="${W - m.l - m.r}" y="${Y(cfg.band.y1)}" height="${Y(cfg.band.y0) - Y(cfg.band.y1)}" fill="${cfg.band.color}"/>`;
+  (cfg.areas || []).forEach(a => { const pts = a.pts.filter(p => Number.isFinite(p[1])); if (pts.length < 2) return;
+    h += `<path d="M${X(pts[0][0])} ${Y(a.base)} ${pts.map(p => `L${X(p[0])} ${Y(p[1])}`).join(' ')} L${X(pts[pts.length - 1][0])} ${Y(a.base)} Z" fill="${a.color}" stroke="none"/>`; });
+  (cfg.hlines || []).forEach(l => { const y = Y(l.y); h += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="${l.color}" stroke-width="1.4" ${l.dash ? 'stroke-dasharray="6 4"' : ''}/>`; });
+  cfg.series.forEach((s, i) => {
+    const pts = s.pts.filter(p => Number.isFinite(p[1]) && (!cfg.ylog || p[1] > 0) && (!cfg.xlog || p[0] > 0));
+    if (!pts.length) return;
+    const d = pts.map((p, k) => (k ? 'L' : 'M') + X(p[0]).toFixed(2) + ' ' + Y(p[1]).toFixed(2)).join(' ');
+    h += `<path data-s="${i}" d="${d}" fill="none" stroke="${s.color}" ${s.opacity ? `stroke-opacity="${s.opacity}"` : ''} stroke-width="${s.width || 1.8}" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''}/>`;
+    if (s.dots) pts.forEach(p => { h += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.2" fill="${s.color}"/>`; });
+  });
+  (cfg.marks || []).forEach(mk => { h += `<line x1="${X(mk.x)}" x2="${X(mk.x)}" y1="${m.t}" y2="${H - m.b}" stroke="${mk.color}" stroke-dasharray="3 3"/><text x="${X(mk.x) + 4}" y="${m.t + 12}" style="fill:${mk.color}">${mk.label}</text>`; });
+  h += `</g>`;
+  (cfg.hlines || []).forEach(l => { if (l.label) h += `<text x="${m.l + 8}" y="${Y(l.y) - 7}" text-anchor="start" style="fill:${l.color};font-weight:600">${l.label}</text>`; });
+  h += `<g class="hov" style="pointer-events:none" visibility="hidden"><line class="hx" y1="${m.t}" y2="${H - m.b}" stroke="var(--faint)" stroke-dasharray="2 3"/>${cfg.series.map((s, i) => `<circle class="hd" data-i="${i}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="1.5"/>`).join('')}</g>`;
+  h += `<rect class="hit" x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/>`;
+  svg.innerHTML = h;
+  // animation de tracé
+  if (cfg.reveal) {
+    svg.querySelectorAll('path[data-s]').forEach(p => { const L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = L; p.getBoundingClientRect(); p.style.transition = `stroke-dashoffset ${cfg.reveal}ms cubic-bezier(.3,.6,.2,1)`; p.style.strokeDashoffset = 0;
+      setTimeout(() => { p.style.strokeDasharray = cfg.series[+p.dataset.s].dash || ''; p.style.transition = ''; p.style.strokeDashoffset = ''; }, cfg.reveal + 50); });
+  }
+  if (cfg.hover === false) return;
+  const hit = svg.querySelector('.hit'), hov = svg.querySelector('.hov'), tip = $('tip');
+  const xsSorted = [...new Set(cfg.series.flatMap(s => s.pts.map(p => p[0])))].sort((a, b) => a - b);
+  hit.onpointermove = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    const inv = cfg.xlog ? Math.pow(10, x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0)) : x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+    let best = xsSorted[0]; for (const v of xsSorted) if (Math.abs(v - inv) < Math.abs(best - inv)) best = v;
+    hov.setAttribute('visibility', 'visible');
+    hov.querySelector('.hx').setAttribute('x1', X(best)); hov.querySelector('.hx').setAttribute('x2', X(best));
+    let lines = `<b>${cfg.xname || 'x'} = ${cfg.xfmt ? cfg.xfmt(best) : fmt(best, cfg.xdec ?? 0)}</b>`;
+    cfg.series.forEach((s, i) => {
+      const p = s.pts.find(q => q[0] === best), c = hov.querySelector(`.hd[data-i="${i}"]`);
+      if (p && Number.isFinite(p[1]) && (!cfg.ylog || p[1] > 0)) { c.setAttribute('cx', X(p[0])); c.setAttribute('cy', Y(p[1])); c.setAttribute('visibility', 'visible'); lines += `<br><span style="color:${s.tipColor || 'inherit'}">${s.name}</span> : ${cfg.ylog ? fmtE(p[1]) : fmt(p[1], cfg.ydec ?? 4)}`; }
+      else c.setAttribute('visibility', 'hidden');
+    });
+    tip.innerHTML = lines; tip.hidden = false;
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - 270) + 'px'; tip.style.top = (ev.clientY + 14) + 'px';
+  };
+  hit.onpointerleave = () => { hov.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+}
+function spark(svg, pts, ref, color) {
+  if (!pts.length) { svg.innerHTML = ''; return; }
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]).concat([ref]);
+  const lo = Math.min(...ys), hi = Math.max(...ys), sp = (hi - lo) || 1;
+  const X = x => (x - xs[0]) / (xs[xs.length - 1] - xs[0] || 1) * 118 + 1, Y = y => 40 - (y - lo) / sp * 38;
+  svg.innerHTML = `<line x1="0" x2="120" y1="${Y(ref)}" y2="${Y(ref)}" stroke="var(--bs)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <path d="${pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]) + ' ' + Y(p[1])).join(' ')}" fill="none" stroke="${color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`;
+}
+
+/* ==================== Calcul principal ==================== */
+let S_ = {};           // derniers résultats
+let refCache = { key:'', val:NaN };
+function timeIt(fn) { const t0 = performance.now(); const r = fn(); return [r, performance.now() - t0]; }
+function compute() {
+  const p = params(), N = Math.round(P.N), lam = P.lam;
+  const [b, tb] = timeIt(() => E.binomial(p, N));
+  const [tr, tt] = timeIt(() => E.trinomial(p, N, lam));
+  const bsEu = E.bs(p);
+  let ref = bsEu.price;
+  if (p.american) {
+    const key = JSON.stringify([p.S, p.K, p.T, p.r, p.q, p.sigma, p.call]);
+    if (refCache.key !== key) refCache = { key, val: E.trinomial(p, 2000, Math.sqrt(1.5)).price };
+    ref = refCache.val;
+  }
+  // grecques par différences finies (vega, rho) sur les arbres
+  const hs = 0.01, hr = 0.0001;
+  const bump = (f, o) => f(params(o));
+  const Nb = Math.min(N, 600);
+  const vegaB = (bump(q => E.binomial(q, Nb).price, { sigma: p.sigma + hs }) - bump(q => E.binomial(q, Nb).price, { sigma: p.sigma - hs })) / (2 * hs) / 100;
+  const vegaT = (bump(q => E.trinomial(q, Nb, lam).price, { sigma: p.sigma + hs }) - bump(q => E.trinomial(q, Nb, lam).price, { sigma: p.sigma - hs })) / (2 * hs) / 100;
+  const rhoB = (bump(q => E.binomial(q, Nb).price, { r: p.r + hr }) - bump(q => E.binomial(q, Nb).price, { r: p.r - hr })) / (2 * hr) / 100;
+  const rhoT = (bump(q => E.trinomial(q, Nb, lam).price, { r: p.r + hr }) - bump(q => E.trinomial(q, Nb, lam).price, { r: p.r - hr })) / (2 * hr) / 100;
+  S_ = { p, N, lam, b, tr, bsEu, ref, tb, tt, vegaB, vegaT, rhoB, rhoT };
+  // convergence (mini-graphe + onglet)
+  const Nmax = 160, cb = [], ct = [];
+  for (let n = 4; n <= Nmax; n += 1) { cb.push([n, E.binomial(p, n).price]); ct.push([n, E.trinomial(p, n, lam).price]); }
+  S_.cb = cb; S_.ct = ct;
+}
+
+function renderBoard() {
+  const { p, N, b, tr, bsEu, ref, tb, tt } = S_;
+  const bad = !Number.isFinite(b.price) || !Number.isFinite(tr.price);
+  $('pxB').textContent = fmt(b.price); $('pxT').textContent = fmt(tr.price);
+  $('mtB').innerHTML = `<span>N = ${fmt(N, 0)} ${t('steps')}</span><span>${fmt(tb, 1)} ${t('ms')}</span>`;
+  $('mtT').innerHTML = `<span>N = ${fmt(N, 0)} ${t('steps')}</span><span>λ = ${fmt(S_.lam, 3)}</span><span>${fmt(tt, 1)} ${t('ms')}</span>`;
+  const lbl = p.american ? t('vsRef') : t('vsBS');
+  $('erB').textContent = bad ? t('arb') : `Δ ${lbl} : ${b.price - ref >= 0 ? '+' : ''}${fmt(b.price - ref, 4)}`;
+  $('erT').textContent = bad ? t('arb') : `Δ ${lbl} : ${tr.price - ref >= 0 ? '+' : ''}${fmt(tr.price - ref, 4)}`;
+  $('pxS').textContent = fmt(bsEu.price);
+  if (p.american) {
+    $('bsSub').textContent = t('bsEuOnly');
+    $('mtS').innerHTML = `<span>${t('noBS')}</span>`;
+    $('erS').textContent = `${t('premium')} : ${fmt(ref - bsEu.price, 4)}`;
+    $('refline').innerHTML = `<span>${t('refAM')}<b class="num">${fmt(ref)}</b></span>`;
+  } else {
+    $('bsSub').textContent = t('bsClosed');
+    $('mtS').innerHTML = `<span>d₁ = ${fmt(bsEu.d1, 4)}</span><span>d₂ = ${fmt(bsEu.d2, 4)}</span>`;
+    $('erS').textContent = t('exact');
+    $('refline').innerHTML = `<span>${t('refEU')}</span>`;
+  }
+  spark($('spB'), S_.cb.slice(0, 80), ref, 'var(--bino)');
+  spark($('spT'), S_.ct.slice(0, 80), ref, 'var(--trino)');
+  // calibrage
+  const c = $('calib');
+  const h = t('calibH');
+  c.innerHTML = `<span></span><span class="h">${h[1]}</span><span class="h">${h[2]}</span>
+    <span>${t('cu')}</span><span>${fmt(b.u, 5)}</span><span>${fmt(tr.u, 5)}</span>
+    <span>${t('cpu')}</span><span>${fmt(b.pu, 4)}</span><span>${fmt(tr.pu, 4)}</span>
+    <span>${t('cpm')}</span><span>–</span><span>${fmt(tr.pm, 4)}</span>
+    <span>${t('cpd')}</span><span>${fmt(b.pd, 4)}</span><span>${fmt(tr.pd, 4)}</span>`;
+}
+
+/* ==================== Onglets ==================== */
+let tab = 0;
+try { tab = +(localStorage.getItem('lp-tab') || 0) || 0; } catch (e) {}
+const TAB_IDS = ['convergence', 'arbres', 'grecques', 'exercice', 'incomplet', 'performance'];
+if (TAB_IDS.includes(location.hash.slice(1))) tab = TAB_IDS.indexOf(location.hash.slice(1));
+function buildTabs() {
+  $('tabs').innerHTML = t('tabs').map((n, i) => `<button role="tab" type="button" id="tab${i}" aria-selected="${i === tab}">${n}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach((b, i) => b.onclick = () => { tab = i; try { localStorage.setItem('lp-tab', i); } catch (e) {} buildTabs(); renderPanel(true); });
+}
+function renderPanel(fresh) { [panConv, panTree, panGreeks, panEx, panInc, panPerf][tab](fresh); }
+
+/* --- 1. Convergence --- */
+function panConv(fresh) {
+  const pn = $('panel');
+  if (fresh || !pn.querySelector('#cv1')) {
+    pn.innerHTML = `<h3>${t('conv_h')}</h3><p class="lede">${t('conv_l')}</p>
+      <div class="toolbar"><button class="btn" type="button" id="replay">${t('replay')}</button>
+        <div class="legend"><span style="--c:var(--bino)"><i></i>Binomial</span><span style="--c:var(--trino)"><i></i>Trinomial</span><span style="--c:var(--bs)"><i class="dash"></i>${S_.p.american ? t('refAM').replace(/<[^>]+>/g, '').replace(' = ', '') : 'Black–Scholes'}</span></div></div>
+      <div class="grid2"><div class="chartbox"><h4>${t('priceVsN')}</h4><svg class="chart" id="cv1"></svg><p class="cap" id="cv1c"></p></div>
+      <div class="chartbox"><h4>${t('errVsN')}</h4><svg class="chart" id="cv2"></svg><p class="cap" id="cv2c"></p></div></div>`;
+    $('replay').onclick = () => drawConv(1600);
+  }
+  drawConv(fresh ? 1200 : 0);
+}
+function drawConv(reveal) {
+  const { cb, ct, ref } = S_;
+  const span = Math.max(...cb.filter(p => p[0] >= 30).concat(ct.filter(p => p[0] >= 12)).map(p => Math.abs(p[1] - ref)), 1e-6);
+  chart($('cv1'), { series: [{ name: 'Binomial', color: 'var(--bino)', tipColor: 'var(--bino)', pts: cb, width: 1, opacity: .75 }, { name: 'Trinomial', color: 'var(--trino)', tipColor: 'var(--trino)', pts: ct, width: 2.4 }],
+    hlines: [{ y: ref, color: 'var(--bs)', dash: true, label: `${t('limit')} ${fmt(ref)}` }], yclip: [ref - span * 1.15, ref + span * 1.15], xlabel: t('nAxis'), ylabel: t('price'), xname: 'N', reveal });
+  // erreurs log-log
+  const p = S_.p, lam = S_.lam, Ns = [];
+  for (let e = 1; e <= 3.0; e += 0.05) Ns.push(Math.round(Math.pow(10, e)));
+  const uniq = [...new Set(Ns)];
+  const eb = uniq.map(n => [n, Math.abs(E.binomial(p, n).price - ref)]), et = uniq.map(n => [n, Math.abs(E.trinomial(p, n, lam).price - ref)]);
+  const fit = pts => { const q = pts.filter(x => x[1] > 0 && x[0] >= 30); const xs = q.map(x => Math.log10(x[0])), ys = q.map(x => Math.log10(x[1]));
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let num = 0, den = 0; xs.forEach((x, i) => { num += (x - mx) * (ys[i] - my); den += (x - mx) ** 2; }); return num / den; };
+  const g = uniq.map(n => [n, (eb.find(x => x[0] === n)[1] + et.find(x => x[0] === n)[1]) * 3 / n]);
+  chart($('cv2'), { series: [{ name: 'Binomial', color: 'var(--bino)', tipColor: 'var(--bino)', pts: eb, width: 1.4 }, { name: 'Trinomial', color: 'var(--trino)', tipColor: 'var(--trino)', pts: et, width: 2 },
+    { name: '∝ 1/N', color: 'var(--faint)', pts: uniq.map(n => [n, 2 * Math.max(...et.slice(0, 3).map(x => x[1])) * uniq[0] / n]), dash: '4 4', width: 1.2 }],
+    xlog: true, ylog: true, xlabel: t('nAxis'), ylabel: t('err'), xname: 'N', reveal });
+  const pB = fit(eb), pT = fit(et);
+  $('cv2c').innerHTML = `<span class="stat">${t('slope')} : <b style="color:var(--bino)">${fmt(pB, 2)}</b></span> &nbsp; <span class="stat"><b style="color:var(--trino)">${fmt(pT, 2)}</b></span>`;
+  const last = cb[cb.length - 1], lastT = ct[ct.length - 1];
+  $('cv1c').innerHTML = `<span class="stat">N = ${last[0]} : <b style="color:var(--bino)">${fmt(last[1])}</b></span> &nbsp; <span class="stat"><b style="color:var(--trino)">${fmt(lastT[1])}</b></span> &nbsp; <span class="stat">${t('limit')} <b style="color:var(--bs)">${fmt(ref)}</b></span>`;
+}
+
+/* --- 2. Arbres --- */
+let treeN = 4, animTimer = null;
+function panTree(fresh) {
+  const pn = $('panel');
+  if (fresh || !pn.querySelector('#latB')) {
+    pn.innerHTML = `<h3>${t('tree_h')}</h3><p class="lede">${t('tree_l')}</p>
+      <div class="toolbar"><button class="btn" type="button" id="anim">${t('animate')}</button><button class="btn ghost" type="button" id="showAll">${t('reset')}</button>
+      <label class="stat" for="treeN">${t('shown')} <b id="treeNv">${treeN}</b></label><input type="range" id="treeN" min="1" max="7" step="1" value="${treeN}" style="width:120px;accent-color:var(--ink)">
+      <span class="legend"><span style="--c:var(--bs)"><i></i>${t('exNode')}</span></span></div>
+      <div class="trees"><div class="treebox" style="--c:var(--bino)"><h4>Binomial <span id="tbInfo"></span></h4><svg class="lat" id="latB"></svg></div>
+      <div class="treebox" style="--c:var(--trino)"><h4>Trinomial <span id="ttInfo"></span></h4><svg class="lat" id="latT"></svg></div></div>
+      <p class="cap" style="color:var(--muted);font-size:12.5px;margin:10px 0 0">${t('hover')}</p>`;
+    $('treeN').oninput = e => { treeN = +e.target.value; $('treeNv').textContent = treeN; drawTrees(false); };
+    $('anim').onclick = () => drawTrees(true);
+    $('showAll').onclick = () => drawTrees(false);
+  }
+  drawTrees(false);
+}
+function drawLattice(svg, model, data, color) {
+  const lv = data.levels, n = lv.length - 1;
+  const W = 520, unit = model === 'bino' ? 25 : Math.min(40, 300 / Math.max(1, n)), H = Math.max(180, 2 * n * unit + 84);
+  const X = k => 36 + k * (W - 72) / Math.max(1, n), Y = j => H / 2 - j * unit;
+  const showS = model === 'bino' || n <= 3;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  let h = '';
+  for (let k = 0; k < n; k++) lv[k].forEach(nd => {
+    const tg = model === 'bino' ? [nd.j + 1, nd.j - 1] : [nd.j + 1, nd.j, nd.j - 1];
+    tg.forEach(j2 => { h += `<line class="edge" data-k="${k}" x1="${X(k)}" y1="${Y(nd.j)}" x2="${X(k + 1)}" y2="${Y(j2)}"/>`; });
+  });
+  const vmax = Math.max(...lv.flat().map(nd => nd.V), 1e-9);
+  const r = model === 'trino' ? Math.min(18, unit * 0.45) : (n > 5 ? 15 : 18);
+  lv.forEach((nodes, k) => nodes.forEach(nd => {
+    const a = (nd.V / vmax) * 0.85;
+    h += `<g class="nd${nd.ex ? ' ex' : ''}" data-k="${k}" data-j="${nd.j}"><circle cx="${X(k)}" cy="${Y(nd.j)}" r="${r}" style="fill:color-mix(in srgb, ${color} ${Math.round(a * 100)}%, var(--panel))"/>
+      <text class="v" x="${X(k)}" y="${Y(nd.j) + 3.5}" style="${a > 0.55 ? 'fill:var(--panel)' : ''}">${fmt(nd.V, nd.V >= 100 ? 0 : nd.V >= 10 ? 1 : 2)}</text>
+      ${showS && n <= 6 ? `<text class="s" x="${X(k)}" y="${Y(nd.j) + r + 11}">${fmt(nd.S, 1)}</text>` : ''}</g>`;
+  }));
+  svg.innerHTML = h;
+  svg.onpointermove = ev => {
+    const g = ev.target.closest('.nd'), tip = $('tip');
+    if (!g) { tip.hidden = true; return; }
+    const k = +g.dataset.k, j = +g.dataset.j, nd = lv[k].find(x => x.j === j);
+    const pay = S_.p.call ? Math.max(nd.S - S_.p.K, 0) : Math.max(S_.p.K - nd.S, 0);
+    let m = `<b>${t('tipStep')} ${k}/${n}</b><br>${t('tipS')} : ${fmt(nd.S, 2)}<br>${t('tipV')} : <b>${fmt(nd.V, 4)}</b>`;
+    if (k < n) m += `<br>${t('tipC')} : ${fmt(nd.cont, 4)}<br>${t('tipX')} : ${fmt(pay, 4)}<br>${t('tipD')} : ${fmt(nd.delta, 3)}`;
+    if (nd.ex) m += `<br><span style="color:var(--bs)">● ${t('exNode')}</span>`;
+    tip.innerHTML = m; tip.hidden = false;
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - 270) + 'px'; tip.style.top = (ev.clientY + 14) + 'px';
+  };
+  svg.onpointerleave = () => { $('tip').hidden = true; };
+}
+function drawTrees(animate) {
+  clearInterval(animTimer);
+  const p = S_.p;
+  const dB = E.tree('bino', p, treeN), dT = E.tree('trino', p, treeN, S_.lam);
+  drawLattice($('latB'), 'bino', dB, 'var(--bino)');
+  drawLattice($('latT'), 'trino', dT, 'var(--trino)');
+  $('tbInfo').textContent = `u = ${fmt(dB.u, 4)} · p = ${fmt(dB.pu, 3)}`;
+  $('ttInfo').textContent = `pᵤ = ${fmt(dT.pu, 3)} · pₘ = ${fmt(dT.pm, 3)} · p_d = ${fmt(dT.pd, 3)}`;
+  if (!animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const svgs = [$('latB'), $('latT')];
+  svgs.forEach(s => s.querySelectorAll('.nd').forEach(g => g.classList.add('hide')));
+  let k = treeN;
+  const step = () => {
+    svgs.forEach(s => {
+      s.querySelectorAll(`.nd[data-k="${k}"]`).forEach(g => g.classList.remove('hide'));
+      s.querySelectorAll(`.edge[data-k="${k}"]`).forEach(e => e.classList.add('on'));
+    });
+    k--; if (k < 0) clearInterval(animTimer);
+  };
+  step(); animTimer = setInterval(step, 650);
+}
+
+/* --- 3. Grecques --- */
+function panGreeks() {
+  const { b, tr, bsEu, vegaB, vegaT, rhoB, rhoT, p } = S_;
+  const rows = [[b.delta, tr.delta, bsEu.delta, 4], [b.gamma, tr.gamma, bsEu.gamma, 5], [b.theta, tr.theta, bsEu.theta, 4], [vegaB, vegaT, bsEu.vega / 100, 4], [rhoB, rhoT, bsEu.rho / 100, 4]];
+  const sym = ['Δ', 'Γ', 'Θ', 'ν', 'ρ'];
+  $('panel').innerHTML = `<h3>${t('greeks_h')}</h3><p class="lede">${t('greeks_l')}</p>
+    <div style="display:grid;gap:20px"><div class="tbl-wrap"><table class="g"><thead><tr><th>${t('model')}</th><th><span class="dot" style="--c:var(--bino)"></span>Binomial</th><th><span class="dot" style="--c:var(--trino)"></span>Trinomial</th><th><span class="dot" style="--c:var(--bs)"></span>Black–Scholes</th></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr><td class="sym">${sym[i]} <small>${t('gr')[i]} · ${t('grd')[i]}</small></td><td>${fmt(r[0], r[3])}</td><td>${fmt(r[1], r[3])}</td><td>${fmt(r[2], r[3])}</td></tr>`).join('')}</tbody></table>
+    ${p.american ? `<p class="note">${t('grNoteAm')}</p>` : ''}</div>
+    <div class="chartbox"><h4>${t('profile')}</h4><svg class="chart" id="prof" data-h="300"></svg>
+    <div class="legend" style="margin-top:6px"><span style="--c:var(--bino)"><i></i>Binomial</span><span style="--c:var(--trino)"><i></i>Trinomial</span><span style="--c:var(--bs)"><i class="dash"></i>Black–Scholes (EU)</span><span style="--c:var(--faint)"><i class="dash"></i>${t('payoff')}</span></div></div></div>`;
+  const pts = [[], [], [], []];
+  for (let i = 0; i <= 40; i++) {
+    const s = p.K * (0.5 + i / 40);
+    const q = params({ S: s });
+    pts[0].push([s, E.binomial(q, 150).price]); pts[1].push([s, E.trinomial(q, 150, S_.lam).price]);
+    pts[2].push([s, E.bs(q).price]); pts[3].push([s, p.call ? Math.max(s - p.K, 0) : Math.max(p.K - s, 0)]);
+  }
+  chart($('prof'), { series: [{ name: 'Binomial', color: 'var(--bino)', tipColor: 'var(--bino)', pts: pts[0], width: 1.6 }, { name: 'Trinomial', color: 'var(--trino)', tipColor: 'var(--trino)', pts: pts[1], width: 1.6, dash: '1 0' },
+    { name: 'Black–Scholes', color: 'var(--bs)', tipColor: 'var(--bs)', pts: pts[2], dash: '6 4', width: 1.4 }, { name: t('payoff'), color: 'var(--faint)', pts: pts[3], dash: '3 3', width: 1.2 }],
+    xlabel: 'S₀', ylabel: t('price'), xname: 'S₀', xdec: 1, height: 300 });
+}
+
+/* --- 4. Exercice anticipé --- */
+function panEx() {
+  const p = S_.p, pn = $('panel');
+  let html = `<h3>${t('ex_h')}</h3><p class="lede">${t('ex_l')}</p>`;
+  if (!p.american) { pn.innerHTML = html + `<p class="note">${t('exEu')}</p>`; return; }
+  const N = Math.min(Math.round(P.N), 800);
+  const rb = E.binomial(p, N, { boundary: true }), rt = E.trinomial(p, N, S_.lam, { boundary: true });
+  const has = [...rb.boundary].some(Number.isFinite) || [...rt.boundary].some(Number.isFinite);
+  const euv = S_.bsEu.price, amv = S_.ref;
+  html += `<div class="toolbar"><span class="stat">${t('amVal')} <b>${fmt(amv)}</b></span><span class="stat">${t('euVal')} <b>${fmt(euv)}</b></span><span class="stat">${t('premiumLbl')} <b style="color:var(--bs)">${fmt(amv - euv)}</b></span></div>`;
+  if (!has) { pn.innerHTML = html + `<p class="note">${t('exNone')}</p>`; return; }
+  pn.innerHTML = html + `<div class="chartbox"><svg class="chart" id="exb"></svg>
+    <div class="legend" style="margin-top:6px"><span style="--c:var(--bino)"><i></i>Binomial (N = ${N})</span><span style="--c:var(--trino)"><i></i>Trinomial (N = ${N})</span><span style="--c:var(--faint)"><i class="dash"></i>${t('strike')}</span><span style="--c:var(--bs)"><i></i>${t('exRegion')}</span></div></div>`;
+  const dt = p.T / N, step = Math.max(1, Math.floor(N / 220));
+  const sb = [], st = [];
+  for (let k = 0; k <= N; k += step) { sb.push([k * dt, rb.boundary[k]]); st.push([k * dt, rt.boundary[k]]); }
+  const fin = st.filter(x => Number.isFinite(x[1]));
+  const ys = fin.map(x => x[1]);
+  const base = p.call ? Math.max(...ys, p.K) * 1.08 : Math.min(...ys) * 0.92;
+  chart($('exb'), { series: [{ name: 'Binomial', color: 'var(--bino)', tipColor: 'var(--bino)', pts: sb, width: 1.2 }, { name: 'Trinomial', color: 'var(--trino)', tipColor: 'var(--trino)', pts: st, width: 2.2 }],
+    areas: [{ pts: fin, base, color: 'var(--bs-soft)' }], hlines: [{ y: p.K, color: 'var(--faint)', dash: true, label: 'K' }], yinclude: [base],
+    xlabel: t('tAxis'), ylabel: t('crit'), xname: 't', xdec: 3, ydec: 2, height: 320 });
+}
+
+/* --- 5. Marché incomplet --- */
+let incT = 0.08;
+function panInc() {
+  const pn = $('panel');
+  pn.innerHTML = `<h3>${t('inc_h')}</h3><p class="lede">${t('inc_l')}</p>
+  <div class="inc"><div>
+    <h4 style="margin:0 0 6px;font-size:13.5px">${t('incSys')}</h4>
+    <div class="eq">q<sub>u</sub> + q<sub>m</sub> + q<sub>d</sub> = 1<br>1,1 q<sub>u</sub> + q<sub>m</sub> + 0,9 q<sub>d</sub> = 1,05</div>
+    <h4 style="margin:14px 0 6px;font-size:13.5px">${t('incFam')}</h4>
+    <div class="eq">q<sub>u</sub> = 0,5 + t,&nbsp; q<sub>m</sub> = 0,5 − 2t,&nbsp; q<sub>d</sub> = t,&nbsp; 0 &lt; t &lt; 0,25</div>
+    <div class="field" style="margin-top:14px"><label for="incT">${t('incT')}</label><span class="stat"><b id="incTv"></b></span>
+      <input type="range" id="incT" min="0.001" max="0.249" step="0.001" value="${incT}"></div>
+    <div class="probs" id="probs"></div>
+  </div><div>
+    <h4 style="margin:0;font-size:13.5px">${t('incPrice')}</h4>
+    <div class="bigC num" id="incC"></div>
+    <svg class="chart" id="incBar" viewBox="0 0 560 120"></svg>
+    <p class="note">${t('incNote')}</p>
+  </div></div>`;
+  const upd = () => {
+    incT = +$('incT').value;
+    const qu = 0.5 + incT, qm = 0.5 - 2 * incT, qd = incT, C = 10 * qu / 1.05;
+    $('incTv').textContent = fmt(incT, 3);
+    $('probs').innerHTML = [['q<sub>u</sub>', qu], ['q<sub>m</sub>', qm], ['q<sub>d</sub>', qd]].map(([l, v]) => `<div class="prob"><span class="math">${l}</span><div class="bar"><span style="width:${v * 100}%"></span></div><b class="num">${fmt(v, 3)}</b></div>`).join('');
+    $('incC').textContent = fmt(C, 4);
+    const lo = 10 * 0.5 / 1.05, hi = 10 * 0.75 / 1.05, X = v => 30 + (v - 4.4) / (7.5 - 4.4) * 500;
+    $('incBar').innerHTML = `<line x1="20" x2="545" y1="62" y2="62" stroke="var(--rule)" stroke-width="2"/>
+      <line x1="${X(lo)}" x2="${X(hi)}" y1="62" y2="62" stroke="var(--trino)" stroke-width="10" stroke-linecap="round" stroke-opacity=".35"/>
+      <text x="${(X(lo) + X(hi)) / 2}" y="36" text-anchor="middle">${t('incRange')}</text>
+      <line x1="${X(lo)}" x2="${X(lo)}" y1="52" y2="72" stroke="var(--muted)"/><text x="${X(lo)}" y="92" text-anchor="middle">${fmt(lo, 2)}</text>
+      <line x1="${X(hi)}" x2="${X(hi)}" y1="52" y2="72" stroke="var(--muted)"/><text x="${X(hi)}" y="92" text-anchor="middle">${fmt(hi, 2)}</text>
+      <circle cx="${X(hi)}" cy="62" r="6" fill="var(--bino)"/><text x="${X(hi)}" y="110" text-anchor="middle" style="fill:var(--bino);font-weight:600">${t('incBino')}</text>
+      <circle cx="${X(C)}" cy="62" r="8" fill="var(--trino)" stroke="var(--panel)" stroke-width="2"/>`;
+  };
+  $('incT').oninput = upd; upd();
+}
+
+/* --- 6. λ et performance --- */
+let perfCache = null;
+function panPerf() {
+  const pn = $('panel');
+  pn.innerHTML = `<h3>${t('perf_h')}</h3><p class="lede">${t('perf_l')}</p>
+    <div class="toolbar"><button class="btn" type="button" id="runPerf">${t('compute')}</button><span class="stat">${t('perfNote')}</span></div>
+    <div class="grid2"><div class="chartbox"><h4>${t('lamChart')}</h4><svg class="chart" id="lamC"></svg></div>
+    <div class="chartbox"><h4>${t('timeChart')}</h4><svg class="chart" id="timeC"></svg></div></div>
+    <p class="note">${t('perfEu')}</p>`;
+  $('runPerf').onclick = runPerf;
+  if (perfCache && perfCache.key === perfKey()) drawPerf(); else runPerf();
+}
+const perfKey = () => JSON.stringify([P.S, P.T, P.r, P.q, P.sig]);
+function runPerf() {
+  const btn = $('runPerf'); btn.disabled = true; btn.textContent = t('computing');
+  setTimeout(() => {
+    const base = params({ call: true, american: false });
+    const Ks = [0.9, 1, 1.1].map(k => k * P.S), bsv = Ks.map(K => E.bs({ ...base, K }).price);
+    const lams = []; for (let l = 1; l <= 2.0001; l += 0.05) lams.push(+l.toFixed(2));
+    const lamPts = lams.map(l => { let s = 0, c = 0; Ks.forEach((K, i) => { for (let n = 100; n <= 200; n += 10) { s += Math.abs(E.trinomial({ ...base, K }, n, l).price - bsv[i]); c++; } }); return [l, s / c]; });
+    const K9 = []; for (let i = 0; i < 9; i++) K9.push(P.S * (0.9 + i * 0.025));
+    const bs9 = K9.map(K => E.bs({ ...base, K }).price);
+    const Ns = [20, 40, 80, 160, 320, 640, 1280];
+    const meas = (f) => Ns.map(n => {
+      let s = 0; K9.forEach((K, i) => { s += Math.abs(f({ ...base, K }, n) - bs9[i]); });
+      let reps = 0; const t0 = performance.now(); let el = 0;
+      do { K9.forEach(K => f({ ...base, K }, n)); reps++; el = performance.now() - t0; } while (el < 25 && reps < 2000);
+      return [el / (reps * K9.length), s / K9.length, n]; });
+    const mb = meas((q, n) => E.binomial(q, n).price), mt = meas((q, n) => E.trinomial(q, n, Math.sqrt(1.5)).price), m3 = meas((q, n) => E.trinomial(q, n, Math.sqrt(3)).price);
+    perfCache = { key: perfKey(), lamPts, mb, mt, m3 };
+    btn.disabled = false; btn.textContent = t('compute'); drawPerf();
+  }, 30);
+}
+function drawPerf() {
+  const { lamPts, mb, mt, m3 } = perfCache;
+  chart($('lamC'), { series: [{ name: t('meanErr'), color: 'var(--trino)', tipColor: 'var(--trino)', pts: lamPts, width: 2, dots: true }], marks: [{ x: 1, color: 'var(--bino)', label: 'CRR' }, { x: Math.sqrt(1.5), color: 'var(--faint)', label: '√1,5' }, { x: Math.sqrt(3) > 2 ? 2 : Math.sqrt(3), color: 'var(--faint)', label: '√3' }],
+    xlabel: 'λ', ylabel: t('meanErr'), xname: 'λ', xdec: 2, ydec: 5, yfmt: v => fmt(v, 3) });
+  chart($('timeC'), { series: [{ name: 'Binomial', color: 'var(--bino)', tipColor: 'var(--bino)', pts: mb.map(x => [x[0], x[1]]), dots: true }, { name: 'Trinomial λ = √1,5', color: 'var(--trino)', tipColor: 'var(--trino)', pts: mt.map(x => [x[0], x[1]]), dots: true },
+    { name: 'Trinomial λ = √3', color: 'var(--faint)', pts: m3.map(x => [x[0], x[1]]), dots: true, dash: '4 3' }], xlog: true, ylog: true, xlabel: t('timeAxis'), ylabel: t('meanErr'), xname: 'ms', xfmt: v => fmt(v, v < 1 ? 2 : 1), hover: false });
+}
+
+/* ==================== Langue, thème, mise à jour ==================== */
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.dataset.i18n); });
+  $('langBtn').textContent = lang === 'fr' ? 'EN' : 'FR';
+  buildFields(); buildTabs();
+}
+$('langBtn').onclick = () => { lang = lang === 'fr' ? 'en' : 'fr'; try { localStorage.setItem('lp-lang', lang); } catch (e) {} applyLang(); renderAll(true); };
+$('themeBtn').onclick = () => {
+  const root = document.documentElement, cur = root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const nx = cur === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', nx); try { localStorage.setItem('lp-theme', nx); } catch (e) {}
+};
+try { const th = localStorage.getItem('lp-theme'); if (th) document.documentElement.setAttribute('data-theme', th); } catch (e) {}
+
+let pending = null;
+function schedule(fresh) { clearTimeout(pending); pending = setTimeout(() => renderAll(fresh), 70); }
+function renderAll(fresh) { compute(); renderBoard(); renderPanel(fresh === true ? true : tab === 4 ? false : false); }
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => renderPanel(false), 150); });
+
+if (!T[lang]) lang = 'fr';
+applyLang(); syncInputs(); compute(); renderBoard(); renderPanel(true);
+})();
+</script>
+
+</body>
+</html>
